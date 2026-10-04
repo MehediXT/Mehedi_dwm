@@ -1,0 +1,22 @@
+# Build artifacts
+*.o
+*.a
+*.so
+*.out
+
+# Built executables
+/dmenu/dmenu
+/dmenu/stest
+/dmenu/config.h
+/dwm/dwm
+/st/st
+
+# Editor and local files
+.agents
+.aws
+.codex
+*.swp
+*.swo
+*~
+.DS_Store
+*.log
