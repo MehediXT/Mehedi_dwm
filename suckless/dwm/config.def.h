@@ -7,11 +7,9 @@ dwm-bartoggle-keybinds-6.4.diff ----- toggle pieces of the bar
 dwm-bulkill-20231029-9f88553.diff ----- kill all except current; kill all in tag
 dwm-colorbar-6.3.diff ----- fine control over statusbar colors
 dwm-fixmultimon-6.4.diff ----- pretty much a bug fix
-dwm-focusfullscreen-20211121-95e7342.diff ----- proper fullscreen
 dwm-focusmaster-return-6.2.diff ----- switch to master from anywhere in the stack
 dwm-focusmonmouse-6.2.diff ----- move mouse when you switch monitors via keybind
 dwm-hide_vacant_tags-6.4.diff ----- hide tags with no windows
-dwm-preventfocusshift-20240831-6.5.diff ----- automatically exit fullscreen when a window is spawned
 dwm-restartsig-20180523-6.2.diff ----- refresh dwm after recompile, without quitting
 dwm-spawntag-6.2.diff ----- spawn an application when tag is middle-clicked
 dwm-stacker-6.2.diff ----- more utilities to manage the stack
@@ -38,7 +36,7 @@ static const int showlayout         = 1;        /* 0 means no layout indicator *
 static const int showstatus         = 1;        /* 0 means no status bar */
 static const int showfloating       = 0;        /* 0 means no floating indicator */
 static int topbar                   = 1;        /* 0 means bottom bar */
-static const unsigned int baralpha  = 0x80;     /* 25% opaque; lower values are more transparent */
+static const unsigned int baralpha  = 0x80;     /* 50% opaque; lower values are more transparent */
 static const unsigned int borderalpha = OPAQUE; /* keep client borders solid */
 static const unsigned int alphas[]  = { OPAQUE, baralpha, borderalpha };
 static char dmenufont[]             = "monospace:size=10";
@@ -48,7 +46,7 @@ static char barfgcolor[]            = "#96958d";
 static char baractivecolor[]        = "#d0cfc7";
 
 /* default colors used if xrdb is not loaded */
-/* With baralpha=0, XRender needs zero RGB too (premultiplied ARGB). */
+/* Black backgrounds keep translucent ARGB pixels premultiplied. */
 static char normbgcolor[]           = "#000000";
 static char normbordercolor[]       = "#4c566a";
 static char normfgcolor[]           = "#d8dee9";
@@ -152,6 +150,7 @@ static const Arg tagexec[] = { /* spawn application when tag is middle-clicked *
 static const Key keys[] = {
 	/* modifier                     key        function        argument */
 	{ MODKEY,                       XK_d,      spawn,          {.v = dmenucmd } },
+	{ MODKEY|ShiftMask,             XK_c,      spawn,          {.v = (const char*[]){ "dwm-control-center", NULL } } },
 	{ MODKEY,                       XK_Return, spawn,          {.v = termcmd } },
 	{ MODKEY|ShiftMask,             XK_b,      togglebar,      {0} },
 	STACKKEYS(MODKEY,                          focus)
@@ -176,7 +175,7 @@ static const Key keys[] = {
 
 
 	{ MODKEY,                       XK_t,      setlayout,      {.v = &layouts[0]} },
-	{ MODKEY,						XK_f,	   togglefullscreen, {0} }, /* focus fullscreen patch */
+	{ MODKEY,						XK_f,	   togglefullscreen, {0} }, /* toggle focused window fullscreen */
 	{ MODKEY|ShiftMask,				XK_m,      setlayout,      {.v = &layouts[2]} }, /* monacle */
 	{ MODKEY,						XK_s,      setlayout,      {.v = &layouts[3]} }, /* spiral */
 	{ MODKEY|ShiftMask,				XK_t,      setlayout,      {.v = &layouts[4]} }, /* dwindle */

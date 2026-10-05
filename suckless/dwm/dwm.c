@@ -1019,13 +1019,7 @@ focus(Client *c)
 		XSetInputFocus(dpy, selmon->barwin, RevertToPointerRoot, CurrentTime);
 		XDeleteProperty(dpy, root, netatom[NetActiveWindow]);
 	}
-	if(selmon->sel && selmon->sel->isfullscreen){ /* if previous client was fullscreen, toggle off and then back for the new */
-		togglefullscreen(NULL);
-		selmon->sel = c;
-		togglefullscreen(NULL);
-	}else{
-		selmon->sel = c;
-	}
+	selmon->sel = c;
 	drawbars(); /* redraw statusbar */
 }
 
@@ -1398,8 +1392,6 @@ manage(Window w, XWindowAttributes *wa)
 		(unsigned char *) &(c->win), 1);
 	XMoveResizeWindow(dpy, c->win, c->x + 2 * sw, c->y, c->w, c->h); /* some windows require this */
 	setclientstate(c, NormalState);
-	if(selmon->sel && selmon->sel->isfullscreen && !c->isfloating) /* if a fullscreen window was focused, toggle fullscreen */
-		setfullscreen(selmon->sel, 0);
 	if (c->mon == selmon)
 		unfocus(selmon->sel, 0); /* unfocus other monitor if new window is on current monitor */
 	c->mon->sel = c;
@@ -2341,7 +2333,6 @@ unmanage(Client *c, int destroyed)
 { /* removing a window from dwm's control */
 	Monitor *m = c->mon;
 	XWindowChanges wc;
-	int fullscreen = (selmon->sel == c && selmon->sel->isfullscreen)?1:0;
 
 	if (c->swallowing) { /* handle swallowing first */
 		unswallow(c);
@@ -2376,9 +2367,6 @@ unmanage(Client *c, int destroyed)
 	if (!s) { /* recalcs layout now that c is gone */
 		arrange(m);
 		focus(NULL);
-	if(fullscreen){ /* if fullscreen, toggle it off */
-		togglefullscreen(NULL);
-	}
 		updateclientlist(); /* update EWMH property */
 	}
 }

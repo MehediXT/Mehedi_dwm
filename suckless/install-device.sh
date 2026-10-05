@@ -18,12 +18,17 @@ for file in \
         exit 1
     fi
 done
+if [ ! -f "$source_dir/dwm/scripts/dwm-control-center" ]; then
+    printf '%s\n' 'Missing Control Center script.' >&2
+    exit 1
+fi
 
 mkdir -p /usr/local/share/suckless-backups
 backup_dir=$(mktemp -d /usr/local/share/suckless-backups/install-XXXXXXXX)
 for target in \
     /usr/local/bin/dwm /usr/local/bin/dmenu /usr/local/bin/dmenu_path \
-    /usr/local/bin/dmenu_run /usr/local/bin/stest /usr/local/bin/st; do
+    /usr/local/bin/dmenu_run /usr/local/bin/stest /usr/local/bin/st \
+    /usr/local/bin/dwm-control-center; do
     if [ -e "$target" ]; then
         mkdir -p "$backup_dir$(dirname -- "$target")"
         cp -a -- "$target" "$backup_dir$target"
@@ -33,10 +38,11 @@ done
 for name in dwm dmenu dmenu_path dmenu_run stest st; do
     install -Dm755 "$stage/bin/$name" "/usr/local/bin/$name"
 done
+install -Dm755 "$source_dir/dwm/scripts/dwm-control-center" /usr/local/bin/dwm-control-center
 for name in dwm dmenu stest st; do
     install -Dm644 "$stage/share/man/man1/$name.1" "/usr/local/share/man/man1/$name.1"
 done
 tic -x -o /usr/share/terminfo "$source_dir/st/st.info"
 
-printf 'Installed dwm, dmenu, and st. Previous launchers are in %s\n' "$backup_dir"
+printf 'Installed dwm, dmenu, st, and the Control Center. Previous launchers are in %s\n' "$backup_dir"
 printf '%s\n' 'Your existing ~/.xinitrc already starts dwm-session.'

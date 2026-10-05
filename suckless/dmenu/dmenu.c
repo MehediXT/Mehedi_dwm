@@ -754,39 +754,37 @@ usage(void)
 	    "             [-nb color] [-nf color] [-sb color] [-sf color] [-w windowid]");
 }
 
+static char *
+resource_or_default(XrmDatabase db, const char *name, const char *fallback)
+{
+	char *type;
+	char *copy;
+	XrmValue value;
+	const char *selected = fallback;
+
+	if (db && XrmGetResource(db, name, "*", &type, &value) && value.addr)
+		selected = value.addr;
+	if (!(copy = strdup(selected)))
+		die("strdup:");
+	return copy;
+}
+
 void
-readxresources(void) {
+readxresources(void)
+{
+	char *xrm;
+	XrmDatabase db;
+
 	XrmInitialize();
-
-	char* xrm;
-	if ((xrm = XResourceManagerString(drw->dpy))) {
-		char *type;
-		XrmDatabase xdb = XrmGetStringDatabase(xrm);
-		XrmValue xval;
-
-		if (XrmGetResource(xdb, "dmenu.font", "*", &type, &xval))
-			fonts[0] = strdup(xval.addr);
-		else
-			fonts[0] = strdup(fonts[0]);
-		if (XrmGetResource(xdb, "dmenu.background", "*", &type, &xval))
-			colors[SchemeNorm][ColBg] = strdup(xval.addr);
-		else
-			colors[SchemeNorm][ColBg] = strdup(colors[SchemeNorm][ColBg]);
-		if (XrmGetResource(xdb, "dmenu.foreground", "*", &type, &xval))
-			colors[SchemeNorm][ColFg] = strdup(xval.addr);
-		else
-			colors[SchemeNorm][ColFg] = strdup(colors[SchemeNorm][ColFg]);
-		if (XrmGetResource(xdb, "dmenu.selbackground", "*", &type, &xval))
-			colors[SchemeSel][ColBg] = strdup(xval.addr);
-		else
-			colors[SchemeSel][ColBg] = strdup(colors[SchemeSel][ColBg]);
-		if (XrmGetResource(xdb, "dmenu.selforeground", "*", &type, &xval))
-			colors[SchemeSel][ColFg] = strdup(xval.addr);
-		else
-			colors[SchemeSel][ColFg] = strdup(colors[SchemeSel][ColFg]);
-
-		XrmDestroyDatabase(xdb);
-	}
+	xrm = XResourceManagerString(drw->dpy);
+	db = xrm ? XrmGetStringDatabase(xrm) : NULL;
+	fonts[0] = resource_or_default(db, "dmenu.font", fonts[0]);
+	colors[SchemeNorm][ColBg] = resource_or_default(db, "dmenu.background", colors[SchemeNorm][ColBg]);
+	colors[SchemeNorm][ColFg] = resource_or_default(db, "dmenu.foreground", colors[SchemeNorm][ColFg]);
+	colors[SchemeSel][ColBg] = resource_or_default(db, "dmenu.selbackground", colors[SchemeSel][ColBg]);
+	colors[SchemeSel][ColFg] = resource_or_default(db, "dmenu.selforeground", colors[SchemeSel][ColFg]);
+	if (db)
+		XrmDestroyDatabase(db);
 }
 
 int

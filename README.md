@@ -74,6 +74,7 @@ customization.
 | --- | --- |
 | `Super+Return` | Open st |
 | `Super+D` | Open dmenu |
+| `Super+Shift+C` | Open the dmenu Control Center |
 | `Super+W` | Open the browser |
 | `Super+E` | Open Thunar |
 | `Super+N` | Open Neovim in st |
@@ -102,6 +103,14 @@ The full bindings are in [dwm/config.def.h](dwm/config.def.h). Browser,
 screenshot, lock, and power shortcuts call helper scripts from my local
 desktop setup; those helpers are not included in this folder.
 
+The [Control Center](suckless/dwm/scripts/dwm-control-center) manages Wi-Fi,
+Bluetooth, audio, brightness, wallpaper, display modes, and system info. It
+uses `nmcli`, `bluetoothctl`, `wpctl`, `pactl`, `brightnessctl`, `feh`, and
+`xrandr` when needed. Wi-Fi passwords are entered in st through `nmcli --ask`.
+On displays without a hardware backlight, brightness uses xrandr screen
+dimming. Set `WALLPAPER_DIR` to change its image folder (default:
+`~/Pictures/pics`).
+
 ## Build and install
 
 The builds use a C compiler, Make, X11, Xinerama, Xft, Fontconfig, and
@@ -126,6 +135,7 @@ Install the builds into `~/.local`:
 make -C dwm install PREFIX="$HOME/.local"
 make -C st install PREFIX="$HOME/.local"
 make -C dmenu install PREFIX="$HOME/.local"
+ln -sfn "$PWD/dwm/scripts/dwm-control-center" "$HOME/.local/bin/dwm-control-center"
 ```
 
 Keep `~/.local/bin` in your `PATH`. dwm runs inside an X11 session. My current

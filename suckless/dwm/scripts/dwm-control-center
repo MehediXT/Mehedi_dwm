@@ -1,0 +1,300 @@
+#!/usr/bin/env bash
+# Keyboard-driven settings for a dwm/X11 session.
+
+set -u
+
+WALLPAPER_DIR=${WALLPAPER_DIR:-"$HOME/Pictures/pics"}
+
+menu() {
+    dmenu -i -l 12 -p "$1"
+}
+
+notice() {
+    if command -v notify-send >/dev/null 2>&1; then
+        notify-send 'Control Center' "$1"
+    else
+        printf 'Control Center: %s\n' "$1" >&2
+    fi
+}
+
+need() {
+    if ! command -v "$1" >/dev/null 2>&1; then
+        notice "$1 is not installed"
+        return 1
+    fi
+}
+
+run() {
+    local label=$1
+    shift
+    local output
+    if output=$("$@" 2>&1); then
+        notice "$label"
+    else
+        notice "$label failed: ${output:-unknown error}"
+    fi
+}
+
+wifi() {
+    need nmcli || return
+    local choice state ssid networks
+    while :; do
+        state=$(nmcli radio wifi 2>/dev/null) || state=unknown
+        choice=$(printf 'Toggle Wi-Fi (%s)\nConnect to network\nDisconnect\nBack\n' "$state" | menu 'Wi-Fi') || return
+        case "$choice" in
+            'Toggle Wi-Fi ('*)
+                if [[ $state == enabled ]]; then
+                    run 'Wi-Fi off' nmcli radio wifi off
+                else
+                    run 'Wi-Fi on' nmcli radio wifi on
+                fi
+                ;;
+            'Connect to network')
+                networks=$(nmcli -e no -g SSID device wifi list --rescan yes 2>/dev/null | sed '/^$/d' | sort -u)
+                [[ -n $networks ]] || { notice 'No Wi-Fi networks found'; continue; }
+                ssid=$(printf '%s\n' "$networks" | menu 'Select Wi-Fi') || continue
+                [[ -n $ssid ]] || continue
+                # nmcli --ask reads passwords in st; dmenu would expose them on screen.
+                need st || continue
+                st -e bash -c '
+                    nmcli --ask -w 30 device wifi connect "$1"
+                    result=$?
+                    printf "\nPress Enter to close..."
+                    read -r _
+                    exit "$result"
+                ' bash "$ssid" &
+                ;;
+            Disconnect)
+                local device
+                device=$(nmcli -t -f DEVICE,TYPE,STATE device status 2>/dev/null | awk -F: '$2 == "wifi" && $3 == "connected" {print $1; exit}')
+                [[ -n $device ]] && run 'Wi-Fi disconnected' nmcli device disconnect "$device" || notice 'Wi-Fi is not connected'
+                ;;
+            Back|'') return ;;
+        esac
+    done
+}
+
+bluetooth() {
+    need bluetoothctl || return
+    local choice state device mac devices filter empty_message
+    while :; do
+        state=$(bluetoothctl show 2>/dev/null | awk '/Powered:/ {print $2; exit}')
+        [[ -n $state ]] || { notice 'No Bluetooth adapter available'; return; }
+        choice=$(printf 'Toggle Bluetooth (%s)\nScan for devices\nConnect device\nDisconnect device\nPair device\nTrust device\nRemove device\nBack\n' "$state" | menu 'Bluetooth') || return
+        case "$choice" in
+            'Toggle Bluetooth ('*)
+                if [[ $state == yes ]]; then
+                    run 'Bluetooth off' bluetoothctl power off
+                else
+                    run 'Bluetooth on' bluetoothctl power on
+                fi
+                ;;
+            'Scan for devices')
+                if [[ $state != yes ]]; then
+                    notice 'Turn Bluetooth on before scanning'
+                elif bluetoothctl --timeout 10 scan on >/dev/null 2>&1; then
+                    notice 'Bluetooth scan complete'
+                else
+                    notice 'Bluetooth scan failed'
+                fi
+                ;;
+            'Connect device'|'Disconnect device'|'Pair device'|'Trust device'|'Remove device')
+                case "$choice" in
+                    'Connect device'|'Trust device'|'Remove device')
+                        filter=Paired
+                        empty_message='No paired devices; pair one first'
+                        ;;
+                    'Disconnect device')
+                        filter=Connected
+                        empty_message='No Bluetooth devices are connected'
+                        ;;
+                    'Pair device')
+                        filter=''
+                        empty_message='No devices found; scan first'
+                        ;;
+                esac
+                devices=$(bluetoothctl devices ${filter:+"$filter"} 2>/dev/null | sed -n 's/^Device //p')
+                [[ -n $devices ]] || { notice "$empty_message"; continue; }
+                device=$(printf '%s\n' "$devices" | menu "$choice") || continue
+                if printf '%s\n' "$devices" | grep -Fxq -- "$device" &&
+                   [[ $device =~ ^(([[:xdigit:]]{2}:){5}[[:xdigit:]]{2})($|[[:space:]]) ]]; then
+                    mac=${BASH_REMATCH[1]}
+                else
+                    notice 'Select a listed Bluetooth device'
+                    continue
+                fi
+                case "$choice" in
+                    'Connect device') run 'Bluetooth connected' bluetoothctl --timeout 20 connect "$mac" ;;
+                    'Disconnect device') run 'Bluetooth disconnected' bluetoothctl --timeout 20 disconnect "$mac" ;;
+                    'Pair device')
+                        need st || continue
+                        st -e bash -c '
+                            bluetoothctl --agent KeyboardDisplay --timeout 30 pair "$1"
+                            result=$?
+                            printf "\nPress Enter to close..."
+                            read -r _
+                            exit "$result"
+                        ' bash "$mac"
+                        ;;
+                    'Trust device') run 'Bluetooth device trusted' bluetoothctl --timeout 20 trust "$mac" ;;
+                    'Remove device')
+                        if [[ $(printf 'No\nYes\n' | menu "Remove $mac?") == Yes ]]; then
+                            run 'Bluetooth device removed' bluetoothctl --timeout 20 remove "$mac"
+                        fi
+                        ;;
+                esac
+                ;;
+            Back|'') return ;;
+        esac
+    done
+}
+
+audio() {
+    need wpctl || return
+    local choice volume sinks sink
+    while :; do
+        volume=$(wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null) || volume=unavailable
+        choice=$(printf 'Volume +5%%\nVolume -5%%\nToggle mute\nSet volume (0-100)\nSelect output device\nBack\n' | menu "Audio: $volume") || return
+        case "$choice" in
+            'Volume +5%') run 'Volume increased' wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+ ;;
+            'Volume -5%') run 'Volume decreased' wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- ;;
+            'Toggle mute') run 'Mute toggled' wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
+            'Set volume (0-100)')
+                volume=$(printf '25\n50\n75\n100\n' | menu 'Volume %') || continue
+                if [[ $volume =~ ^([0-9]{1,2}|100)$ ]]; then
+                    run "Volume set to $volume%" wpctl set-volume @DEFAULT_AUDIO_SINK@ "$volume%"
+                else
+                    notice 'Enter a number from 0 to 100'
+                fi
+                ;;
+            'Select output device')
+                need pactl || continue
+                sinks=$(pactl list short sinks 2>/dev/null | awk -F '\t' '{print $2}')
+                [[ -n $sinks ]] || { notice 'No audio outputs found'; continue; }
+                sink=$(printf '%s\n' "$sinks" | menu 'Audio output') || continue
+                [[ -n $sink ]] && run 'Audio output selected' pactl set-default-sink "$sink"
+                ;;
+            Back|'') return ;;
+        esac
+    done
+}
+
+active_outputs() {
+    xrandr --query 2>/dev/null | awk '$2 == "connected" && $0 ~ /[0-9]+x[0-9]+\+/ {print $1}'
+}
+
+brightness() {
+    local value output outputs factor
+    value=$(printf '25\n50\n75\n100\n' | menu 'Brightness %') || return
+    [[ $value =~ ^([1-9]|[1-9][0-9]|100)$ ]] || { notice 'Enter a number from 1 to 100'; return; }
+    if command -v brightnessctl >/dev/null 2>&1 && [[ -n $(ls -A /sys/class/backlight 2>/dev/null) ]]; then
+        run "Brightness set to $value%" brightnessctl -c backlight set "$value%"
+        return
+    fi
+    if (( value < 10 )); then
+        notice 'Screen dimming must be at least 10%'
+        return
+    fi
+    need xrandr || return
+    outputs=$(active_outputs)
+    [[ -n $outputs ]] || { notice 'No active display found'; return; }
+    output=$(printf '%s\n' "$outputs" | menu 'Dim display') || return
+    [[ -n $output ]] || return
+    if ! printf '%s\n' "$outputs" | grep -Fxq -- "$output"; then
+        notice 'Select a listed display'
+        return
+    fi
+    # xrandr changes gamma on monitors without a hardware backlight.
+    printf -v factor '%d.%02d' "$((value / 100))" "$((value % 100))"
+    run "Screen dimming set to $value%" xrandr --output "$output" --brightness "$factor"
+}
+
+wallpaper() {
+    need feh || return
+    local files image
+    [[ -d $WALLPAPER_DIR ]] || { notice "Wallpaper folder missing: $WALLPAPER_DIR"; return; }
+    files=$(find "$WALLPAPER_DIR" -maxdepth 2 -type f \( -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.webp' \) | sort)
+    [[ -n $files ]] || { notice "No images in $WALLPAPER_DIR"; return; }
+    image=$(printf '%s\n' "$files" | menu 'Wallpaper') || return
+    [[ -f $image ]] || return
+    if command -v dwm-wallpaper >/dev/null 2>&1; then
+        run 'Wallpaper changed' dwm-wallpaper -photo "$image"
+    else
+        run 'Wallpaper changed' feh --bg-fill "$image"
+    fi
+}
+
+display() {
+    need xrandr || return
+    local output outputs modes choice mode rate
+    outputs=$(xrandr --query 2>/dev/null | awk '$2 == "connected" {print $1}')
+    [[ -n $outputs ]] || { notice 'No connected displays found'; return; }
+    output=$(printf '%s\n' "$outputs" | menu 'Display output') || return
+    [[ -n $output ]] || return
+    if ! printf '%s\n' "$outputs" | grep -Fxq -- "$output"; then
+        notice 'Select a connected display'
+        return
+    fi
+    modes=$(xrandr --query 2>/dev/null | awk -v selected="$output" '
+        $1 == selected && $2 == "connected" {show=1; next}
+        show && /^[^[:space:]]/ {exit}
+        show && /^[[:space:]]+[0-9]+x[0-9]+[[:space:]]/ {
+            mode=$1
+            for (i=2; i<=NF; i++) {
+                rate=$i
+                gsub(/[^0-9.]/, "", rate)
+                if (rate != "") print mode " @ " rate " Hz"
+            }
+        }
+    ')
+    choice=$(printf 'Auto (preferred)\n%s\nBack\n' "$modes" | menu "$output mode") || return
+    case "$choice" in
+        'Auto (preferred)') run "$output set to preferred mode" xrandr --output "$output" --auto ;;
+        Back|'') return ;;
+        *)
+            if ! printf '%s\n' "$modes" | grep -Fxq -- "$choice"; then
+                notice 'Select a listed display mode'
+                return
+            fi
+            if [[ $choice =~ ^([0-9]+x[0-9]+)[[:space:]]@[[:space:]]([0-9]+(\.[0-9]+)?)[[:space:]]Hz$ ]]; then
+                mode=${BASH_REMATCH[1]}
+                rate=${BASH_REMATCH[2]}
+                run "$output set to $mode at $rate Hz" xrandr --output "$output" --mode "$mode" --rate "$rate"
+            else
+                notice 'Select a listed display mode'
+            fi
+            ;;
+    esac
+}
+
+system_info() {
+    local cpu memory disk network displays
+    cpu=$(lscpu 2>/dev/null | awk -F: '/^Model name:/ {sub(/^[[:space:]]+/, "", $2); print $2; exit}')
+    memory=$(free -h 2>/dev/null | awk '/^Mem:/ {print $3 " / " $2}')
+    disk=$(df -h / 2>/dev/null | awk 'NR == 2 {print $3 " / " $2}')
+    network=$(ip -4 -o addr show scope global 2>/dev/null | awk 'NR == 1 {print $2 " " $4}')
+    displays=$(active_outputs 2>/dev/null | paste -sd ', ' -)
+    printf 'Host: %s\nKernel: %s\nUptime: %s\nCPU: %s\nMemory: %s\nRoot disk: %s\nNetwork: %s\nDisplay: %s\nBack\n' \
+        "$(hostname)" "$(uname -r)" "$(uptime -p)" "${cpu:-unknown}" "${memory:-unknown}" \
+        "${disk:-unknown}" "${network:-offline}" "${displays:-none}" | menu 'System info' >/dev/null || :
+}
+
+main() {
+    need dmenu || exit 1
+    local choice
+    while :; do
+        choice=$(printf 'Wi-Fi\nBluetooth\nAudio\nBrightness\nWallpaper\nDisplay settings\nSystem info\nExit\n' | menu 'Control Center') || exit 0
+        case "$choice" in
+            Wi-Fi) wifi ;;
+            Bluetooth) bluetooth ;;
+            Audio) audio ;;
+            Brightness) brightness ;;
+            Wallpaper) wallpaper ;;
+            'Display settings') display ;;
+            'System info') system_info ;;
+            Exit|'') exit 0 ;;
+        esac
+    done
+}
+
+main "$@"

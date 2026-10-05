@@ -22,6 +22,10 @@ make install PREFIX="$HOME/.local"
 pkill -HUP -x dwm
 ```
 
+The session launches `~/.local/bin/dwm`. On this machine that is a symlink to
+`suckless/.local/bin/dwm`, so `make` alone leaves the running session on the
+previous build. Install and restart dwm to apply new shortcuts or bar opacity.
+
 ## Status content
 
 Edit `~/suckless/dwm/scripts/dwm-status.sh`. The `parts` array in `status()`
