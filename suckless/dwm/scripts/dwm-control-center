@@ -74,20 +74,47 @@ wifi() {
     done
 }
 
+unstable_bt_dongle_present() {
+    local usb
+    for usb in /sys/bus/usb/devices/*; do
+        [[ -r $usb/idVendor && -r $usb/idProduct ]] || continue
+        if [[ $(<"$usb/idVendor") == 33fa && $(<"$usb/idProduct") == 0001 ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 bluetooth() {
     need bluetoothctl || return
-    local choice state device mac devices filter empty_message
+    local choice state device mac devices filter empty_message excluded power_choice
     while :; do
         state=$(bluetoothctl show 2>/dev/null | awk '/Powered:/ {print $2; exit}')
-        [[ -n $state ]] || { notice 'No Bluetooth adapter available'; return; }
-        choice=$(printf 'Toggle Bluetooth (%s)\nScan for devices\nConnect device\nDisconnect device\nPair device\nTrust device\nRemove device\nBack\n' "$state" | menu 'Bluetooth') || return
+        if [[ -z $state ]]; then
+            choice=$(printf 'Retry after reconnecting USB adapter\nBack\n' | menu 'Bluetooth adapter missing') || return
+            [[ $choice == 'Retry after reconnecting USB adapter' ]] || return
+            continue
+        fi
+        if [[ $state == no ]]; then
+            power_choice='Turn Bluetooth on'
+        elif unstable_bt_dongle_present; then
+            # This USB2.0-BT dongle vanished from the bus after power off.
+            power_choice='Power off disabled for this USB adapter'
+        else
+            power_choice='Turn Bluetooth off'
+        fi
+        choice=$(printf '%s\nScan for devices\nConnect device\nDisconnect device\nPair device\nTrust device\nRemove device\nBack\n' "$power_choice" | menu "Bluetooth ($state)") || return
         case "$choice" in
-            'Toggle Bluetooth ('*)
-                if [[ $state == yes ]]; then
-                    run 'Bluetooth off' bluetoothctl power off
+            'Turn Bluetooth on') run 'Bluetooth on' bluetoothctl power on ;;
+            'Turn Bluetooth off')
+                if unstable_bt_dongle_present; then
+                    notice 'Power off made this USB adapter disappear; disconnect devices instead'
                 else
-                    run 'Bluetooth on' bluetoothctl power on
+                    run 'Bluetooth off' bluetoothctl power off
                 fi
+                ;;
+            'Power off disabled for this USB adapter')
+                notice 'Power off made this USB adapter disappear; disconnect devices instead'
                 ;;
             'Scan for devices')
                 if [[ $state != yes ]]; then
@@ -114,6 +141,20 @@ bluetooth() {
                         ;;
                 esac
                 devices=$(bluetoothctl devices ${filter:+"$filter"} 2>/dev/null | sed -n 's/^Device //p')
+                if [[ $choice == 'Connect device' || $choice == 'Pair device' ]]; then
+                    if [[ $choice == 'Connect device' ]]; then
+                        excluded=$(bluetoothctl devices Connected 2>/dev/null | sed -n 's/^Device //p')
+                        [[ -z $devices ]] || empty_message='All paired devices are connected'
+                    else
+                        excluded=$(bluetoothctl devices Paired 2>/dev/null | sed -n 's/^Device //p')
+                        empty_message='No unpaired devices found; scan first'
+                    fi
+                    # BlueZ may show a different alias in each list; compare MACs.
+                    devices=$(awk '
+                        NR == FNR {blocked[$1] = 1; next}
+                        NF && !blocked[$1] {print}
+                    ' <(printf '%s\n' "$excluded") <(printf '%s\n' "$devices"))
+                fi
                 [[ -n $devices ]] || { notice "$empty_message"; continue; }
                 device=$(printf '%s\n' "$devices" | menu "$choice") || continue
                 if printf '%s\n' "$devices" | grep -Fxq -- "$device" &&
@@ -151,10 +192,10 @@ bluetooth() {
 
 audio() {
     need wpctl || return
-    local choice volume sinks sink
+    local choice volume sinks sink sources source
     while :; do
         volume=$(wpctl get-volume @DEFAULT_AUDIO_SINK@ 2>/dev/null) || volume=unavailable
-        choice=$(printf 'Volume +5%%\nVolume -5%%\nToggle mute\nSet volume (0-100)\nSelect output device\nBack\n' | menu "Audio: $volume") || return
+        choice=$(printf 'Volume +5%%\nVolume -5%%\nToggle mute\nSet volume (0-100)\nSelect output device\nSelect input device\nBack\n' | menu "Audio: $volume") || return
         case "$choice" in
             'Volume +5%') run 'Volume increased' wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+ ;;
             'Volume -5%') run 'Volume decreased' wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%- ;;
@@ -173,6 +214,17 @@ audio() {
                 [[ -n $sinks ]] || { notice 'No audio outputs found'; continue; }
                 sink=$(printf '%s\n' "$sinks" | menu 'Audio output') || continue
                 [[ -n $sink ]] && run 'Audio output selected' pactl set-default-sink "$sink"
+                ;;
+            'Select input device')
+                need pactl || continue
+                sources=$(pactl list short sources 2>/dev/null | awk -F '\t' '$2 !~ /\.monitor$/ {print $2}')
+                [[ -n $sources ]] || { notice 'No audio inputs found'; continue; }
+                source=$(printf '%s\n' "$sources" | menu 'Audio input') || continue
+                if printf '%s\n' "$sources" | grep -Fxq -- "$source"; then
+                    run 'Audio input selected' pactl set-default-source "$source"
+                else
+                    notice 'Select a listed audio input'
+                fi
                 ;;
             Back|'') return ;;
         esac

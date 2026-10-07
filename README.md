@@ -107,9 +107,15 @@ The [Control Center](suckless/dwm/scripts/dwm-control-center) manages Wi-Fi,
 Bluetooth, audio, brightness, wallpaper, display modes, and system info. It
 uses `nmcli`, `bluetoothctl`, `wpctl`, `pactl`, `brightnessctl`, `feh`, and
 `xrandr` when needed. Wi-Fi passwords are entered in st through `nmcli --ask`.
+The Audio menu can select both output devices and microphone inputs.
 On displays without a hardware backlight, brightness uses xrandr screen
 dimming. Set `WALLPAPER_DIR` to change its image folder (default:
 `~/Pictures/pics`).
+
+The 33fa:0001 USB Bluetooth dongle can vanish from the USB bus after a
+Bluetooth power-off. The Control Center leaves that dongle powered and offers
+device disconnection instead. If the adapter is missing, replug the dongle and
+choose Retry in the Bluetooth menu.
 
 ## Build and install
 
