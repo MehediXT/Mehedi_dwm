@@ -1,0 +1,71 @@
+#!/usr/bin/env python3
+"""Put an image on the X clipboard and keep serving it (no xclip needed).
+
+Usage: dwm-clip-image FILE.png
+
+On X11 the clipboard lives in the program that copied, so this process stays
+in the background until something else is copied, then exits by itself.
+"""
+import os
+import signal
+import sys
+import time
+
+import gi
+gi.require_version("Gtk", "3.0")
+gi.require_version("Gdk", "3.0")
+from gi.repository import Gdk, GdkPixbuf, GLib, Gtk  # noqa: E402
+
+PID_FILE = os.path.join(os.environ.get("XDG_RUNTIME_DIR") or "/tmp",
+                        "dwm-clip-image.pid")
+
+
+def replace_previous_holder():
+    """Stop an older copy of this helper, so they don't pile up."""
+    try:
+        with open(PID_FILE) as f:
+            pid = int(f.read().strip())
+        with open(f"/proc/{pid}/cmdline", "rb") as f:
+            if b"dwm-clip-image" in f.read() and pid != os.getpid():
+                os.kill(pid, signal.SIGTERM)
+    except (OSError, ValueError):
+        pass
+    with open(PID_FILE, "w") as f:
+        f.write(f"{os.getpid()}\n")
+
+
+def main():
+    if len(sys.argv) != 2:
+        print("Usage: dwm-clip-image FILE", file=sys.stderr)
+        return 2
+    try:
+        pixbuf = GdkPixbuf.Pixbuf.new_from_file(sys.argv[1])
+    except GLib.Error as error:
+        print(f"dwm-clip-image: {error.message}", file=sys.stderr)
+        return 1
+
+    replace_previous_holder()
+    clipboard = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
+    clipboard.set_image(pixbuf)
+    started = time.monotonic()
+
+    def on_owner_change(_clipboard, _event):
+        # The first notification is our own set_image(); a later one means
+        # another program copied something, so our image is no longer needed.
+        if time.monotonic() - started > 1:
+            Gtk.main_quit()
+
+    clipboard.connect("owner-change", on_owner_change)
+    GLib.unix_signal_add(GLib.PRIORITY_DEFAULT, signal.SIGTERM, Gtk.main_quit)
+    Gtk.main()
+    try:
+        with open(PID_FILE) as f:
+            if f.read().strip() == str(os.getpid()):
+                os.remove(PID_FILE)
+    except OSError:
+        pass
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

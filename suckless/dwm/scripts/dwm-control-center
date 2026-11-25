@@ -10,9 +10,10 @@ menu() {
 }
 
 notice() {
-    if command -v notify-send >/dev/null 2>&1; then
-        notify-send 'Control Center' "$1"
-    else
+    # notify-send exists but fails when no notification daemon is running
+    # (e.g. dunst not installed), so fall back to stderr in that case too.
+    if ! { command -v notify-send >/dev/null 2>&1 &&
+           notify-send -t 3000 'Control Center' "$1" 2>/dev/null; }; then
         printf 'Control Center: %s\n' "$1" >&2
     fi
 }

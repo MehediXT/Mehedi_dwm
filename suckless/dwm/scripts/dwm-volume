@@ -1,0 +1,25 @@
+#!/bin/sh
+# Change volume with wpctl and refresh the dwm bar immediately.
+# Usage: dwm-volume up|down|mute|mic-mute [step]
+set -u
+
+step=${2:-5}
+case "${1:-}" in
+    up)       wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ "${step}%+" ;;
+    down)     wpctl set-volume @DEFAULT_AUDIO_SINK@ "${step}%-" ;;
+    mute)     wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle ;;
+    mic-mute) wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle ;;
+    *) printf 'Usage: dwm-volume up|down|mute|mic-mute [step]\n' >&2; exit 2 ;;
+esac
+
+# dwm-status writes its pid here and redraws on SIGUSR1.
+pidfile="${XDG_RUNTIME_DIR:-/tmp}/dwm-status.pid"
+if [ -r "$pidfile" ]; then
+    # Only signal it if that pid is still dwm-status: a stale pid file could
+    # point at an unrelated process, and USR1 kills most programs.
+    if read -r pid < "$pidfile" && [ -n "$pid" ] &&
+       tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -q 'dwm-status'; then
+        kill -USR1 "$pid" 2>/dev/null
+    fi
+fi
+exit 0

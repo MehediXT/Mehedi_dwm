@@ -1,0 +1,60 @@
+#!/bin/sh
+# Searchable cheat sheet of the dwm shortcuts (Super+/ or Super+F2).
+# Keep this list in sync with dwm/config.h.
+
+cat <<'EOF' | dmenu -i -l 30 -fn 'Hack:size=11' -p 'dwm keys' >/dev/null
+APPS        Super+Return            Terminal (st)
+APPS        Super+d                 App launcher (dmenu)
+APPS        Super+w                 Browser
+APPS        Super+e                 File manager (thunar)
+APPS        Super+n                 Neovim
+APPS        Super+m                 VLC
+APPS        Super+p                 Gwenview
+APPS        Super+Shift+h           htop
+APPS        Super+Shift+c           Control Center (Wi-Fi, BT, audio, display)
+APPS        Super+/  or  Super+F2   This cheat sheet
+WINDOWS     Super+j / Super+k       Focus next / previous window
+WINDOWS     Super+Shift+j / k       Move window down / up the stack
+WINDOWS     Super+Space             Swap focused window with master
+WINDOWS     Super+Ctrl+Return       Jump to master (press again to go back)
+WINDOWS     Super+q                 Close window
+WINDOWS     Super+Shift+q           Close all other windows on this tag
+WINDOWS     Super+f                 Toggle fullscreen
+WINDOWS     Super+Shift+Space       Toggle floating
+WINDOWS     Super+Ctrl+Shift+s      Toggle sticky (window follows you)
+WINDOWS     Super+Drag Left/Right   Move / resize with the mouse
+LAYOUT      Super+t                 Tile
+LAYOUT      Super+Shift+m           Monocle
+LAYOUT      Super+s                 Spiral
+LAYOUT      Super+Shift+t           Dwindle
+LAYOUT      Super+Shift+f           Floating
+LAYOUT      Super+Ctrl+Space        Previous layout
+LAYOUT      Super+h / Super+l       Shrink / grow master area
+LAYOUT      Super+Shift+i / Ctrl+i  More / fewer master windows
+TAGS        Super+1..9              View tag
+TAGS        Super+Shift+1..9        Move window to tag
+TAGS        Super+Ctrl+1..9         Also show tag
+TAGS        Super+Tab               Previous tag
+TAGS        Super+0                 View all tags
+TAGS        Middle-click a tag      Open a terminal on that tag
+MONITORS    Super+, / Super+.       Focus previous / next monitor
+MONITORS    Super+Shift+, / .       Send window to previous / next monitor
+GAPS        Super+- / Super+=       Shrink / grow gaps
+GAPS        Super+Shift+=           Toggle gaps
+GAPS        Super+Shift+-           Reset gaps
+BAR         Super+Shift+b           Toggle bar
+BAR         Click status            Control Center
+BAR         Right-click status      Pavucontrol
+BAR         Scroll on status        Volume up / down
+BAR         Middle-click status     Mute
+MEDIA       Volume / media keys     Volume, mute, play/pause, next, previous
+MEDIA       Super+] / Super+[       Volume up / down
+MEDIA       Super+\                 Mute
+MEDIA       Super+F10/F11/F12       Previous / play-pause / next
+SHOTS       Print / Super+F1        Full screenshot
+SHOTS       F6 / Super+Shift+s      Region screenshot (copied, Ctrl+V to paste)
+SESSION     Super+Shift+l           Lock screen
+SESSION     Super+Shift+p           Power menu
+SESSION     Super+Ctrl+Shift+q      Restart dwm (keeps windows)
+SESSION     Super+Shift+BackSpace   Quit dwm
+EOF

@@ -17,10 +17,11 @@ usage_icon=$'\uf303'
 
 
 gpu_usage() {
-	local gpu_usage
-	gpu=$(timeout 2 nvidia-smi -i 0 --query-gpu=utilization.gpu \
-		--format=csv,noheader,nounits 2>/dev/null)
-	printf '\U000f08ae %s%%' "${gpu:-?}"
+    local gpu
+    command -v nvidia-smi >/dev/null 2>&1 || return 0
+    gpu=$(timeout 2 nvidia-smi -i 0 --query-gpu=utilization.gpu \
+        --format=csv,noheader,nounits 2>/dev/null)
+    printf '\U000f08ae %s%%' "${gpu:-?}"
 }
 
 cpu_sample() {
@@ -229,8 +230,8 @@ status() {
     }')
     parts=(
         # "$(recording)"
-		"Mehedi"
-		"$(gpu_usage)"
+        "Mehedi"
+        "$gpu_text"
         "$cpu_icon $(temperature)  $memory_icon $(memory)"
         "$usage_icon $usage%"
         "$network_text"
@@ -253,16 +254,28 @@ cleanup() {
         wait "$weather_pid" 2>/dev/null
     fi
     [[ -z $weather_dir ]] || rm -rf -- "$weather_dir"
+    if [[ -n ${pid_file:-} && -r $pid_file && $(<"$pid_file") == "$$" ]]; then
+        rm -f -- "$pid_file"
+    fi
 }
 
 main() {
-    local once=0 arg text
+    local once=0 arg text tick=0
     for arg in "$@"; do [[ $arg != --once ]] || once=1; done
     weather_dir=$(mktemp -d "${TMPDIR:-/tmp}/dwm-status.XXXXXXXX") || return 1
     trap cleanup EXIT
     trap 'exit 0' HUP INT TERM
     weather_worker &
     weather_pid=$!
+    if ((!once)); then
+        # `dwm-volume` (and anything else) can send SIGUSR1 to redraw now;
+        # the trap interrupts the `wait` on the sleep below.
+        # Install the trap before publishing the pid: an early USR1 with the
+        # default action would kill the bar.
+        trap ':' USR1
+        pid_file="${XDG_RUNTIME_DIR:-/tmp}/dwm-status.pid"
+        printf '%s\n' "$$" > "$pid_file"
+    fi
     network_sample
     cpu_sample
     previous_cpu_total=$cpu_total
@@ -271,6 +284,8 @@ main() {
     while :; do
         cpu_sample
         network_sample
+        # nvidia-smi is slow and wakes the GPU; refresh it every 5th tick (~15s)
+        if ((tick++ % 5 == 0)); then gpu_text=$(gpu_usage); fi
         text=$(status)
         previous_cpu_total=$cpu_total
         previous_cpu_idle=$cpu_idle
@@ -281,6 +296,7 @@ main() {
         xsetroot -name "$text" >/dev/null 2>&1 || return 0
         sleep 3 &
         wait "$!"
+        kill "$!" 2>/dev/null # woken early by SIGUSR1: drop the old timer
     done
 }
 

@@ -1,0 +1,12 @@
+#!/bin/sh
+
+for browser in brave-browser brave-origin brave firefox zen-browser vivaldi librewolf; do
+    if command -v "$browser" >/dev/null 2>&1; then
+        case "$browser" in
+            brave*|vivaldi) exec "$browser" --ozone-platform=x11 "$@" ;;
+            *) exec "$browser" "$@" ;;
+        esac
+    fi
+done
+
+exec xdg-open https://www.google.com

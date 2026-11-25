@@ -1,0 +1,103 @@
+#!/usr/bin/python3
+"""Switch between the user's photo and video wallpapers."""
+
+import fcntl
+import os
+from pathlib import Path
+import signal
+import subprocess
+import sys
+import time
+
+
+def main():
+    if len(sys.argv) == 2 and sys.argv[1] in ("-h", "--help"):
+        print('Usage: wv -video "filename.mp4"\n       wp -photo "filename.jpg"')
+        return 0
+    if len(sys.argv) < 3 or sys.argv[1] not in ("-video", "-photo"):
+        print('Usage: wv -video "filename.mp4"\n       wp -photo "filename.jpg"', file=sys.stderr)
+        return 2
+
+    mode = sys.argv[1]
+    home = Path.home()
+    folder = home / ("Videos/live walpaper" if mode == "-video" else "Pictures/pics")
+    # Also accept a filename containing spaces without requiring quotes.
+    requested = Path(os.path.expanduser(" ".join(sys.argv[2:])))
+    media = requested if requested.is_absolute() else folder / requested
+    if not media.is_file() or not os.access(media, os.R_OK):
+        print(f"Wallpaper file not found or unreadable: {media}", file=sys.stderr)
+        return 1
+    if not os.environ.get("DISPLAY"):
+        print("Run this command from a terminal in your dwm desktop session.", file=sys.stderr)
+        return 1
+
+    launcher = home / ".local/bin/dwm-live-wallpaper"
+    if mode == "-video" and not os.access(launcher, os.X_OK):
+        print(f"Wallpaper launcher is missing or not executable: {launcher}", file=sys.stderr)
+        return 1
+
+    state = Path(os.environ.get("XDG_STATE_HOME") or home / ".local/state") / "dwm"
+    state.mkdir(parents=True, exist_ok=True)
+    with (state / "wallpaper-switch.lock").open("a") as switch_lock:
+        fcntl.flock(switch_lock, fcntl.LOCK_EX)
+        # Identify this wallpaper launcher, avoiding other video players.
+        wrappers = set()
+        children = {}
+        for entry in Path("/proc").iterdir():
+            if not entry.name.isdigit():
+                continue
+            try:
+                if entry.stat().st_uid != os.getuid():
+                    continue
+                args = (entry / "cmdline").read_bytes().split(b"\0")
+                fields = (entry / "stat").read_text().rsplit(")", 1)[1].split()
+                pid = int(entry.name)
+                children[pid] = (int(fields[1]), args)
+                if (args[0] == os.fsencode(home / ".local/bin/xwinwrap")
+                        and any(b"--loop-file=inf" in arg for arg in args)):
+                    wrappers.add(pid)
+            except (OSError, ValueError, IndexError):
+                continue
+        players = {pid for pid, (parent, args) in children.items()
+                   if parent in wrappers and args
+                   and os.path.basename(args[0]) == b"mpv"}
+        for pid in players | wrappers:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+
+        # Wait for the old wallpaper to release its single-instance lock.
+        with (state / "live-wallpaper.lock").open("a") as live_lock:
+            deadline = time.monotonic() + 3
+            while True:
+                try:
+                    fcntl.flock(live_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        print("The previous video wallpaper has not stopped; try again.", file=sys.stderr)
+                        return 1
+                    time.sleep(0.05)
+
+        if mode == "-photo":
+            subprocess.run(["feh", "--bg-fill", str(media)], check=True)
+        else:
+            with (state / "live-wallpaper.log").open("ab") as log:
+                process = subprocess.Popen([str(launcher), str(media)],
+                                           stdin=subprocess.DEVNULL, stdout=log,
+                                           stderr=log, start_new_session=True)
+            time.sleep(0.2)
+            if process.poll() is not None:
+                print(f"Video wallpaper did not stay running. See {state / 'live-wallpaper.log'}", file=sys.stderr)
+                return 1
+        print(f"{'Video' if mode == '-video' else 'Photo'} wallpaper: {media.name}")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except (OSError, subprocess.CalledProcessError) as error:
+        print(f"Wallpaper switch failed: {error}", file=sys.stderr)
+        sys.exit(1)

@@ -1,0 +1,40 @@
+#!/bin/sh
+# Save a screenshot and put the image on the clipboard (paste with Ctrl+V).
+# Usage: dwm-screenshot [region|full]
+set -eu
+
+dir="$HOME/Pictures/Screenshots"
+mkdir -p "$dir"
+file="$dir/$(date +%Y-%m-%d_%H-%M-%S-%N).png"
+
+case "${1:-region}" in
+    region) set -- -r -k ;;
+    full) set -- -f ;;
+    *) printf 'Usage: dwm-screenshot [region|full]\n' >&2; exit 2 ;;
+esac
+
+printf 'Screenshot requested: %s\n' "$*"
+spectacle -b -n "$@" -o "$file"
+if [ ! -s "$file" ]; then
+    printf 'Screenshot canceled or no image saved\n'
+    exit 0
+fi
+printf 'Screenshot saved: %s\n' "$file"
+
+# xclip stays in the background and serves the image until something else is
+# copied, so it can still be pasted after this script exits.
+copied='Screenshot copied - paste with Ctrl+V (also saved in ~/Pictures/Screenshots)'
+helper="$(dirname -- "$(readlink -f -- "$0")")/dwm-clip-image"
+command -v dwm-clip-image >/dev/null 2>&1 && helper=$(command -v dwm-clip-image)
+if command -v xclip >/dev/null 2>&1; then
+    xclip -selection clipboard -t image/png -i "$file"
+    message=$copied
+elif [ -x "$helper" ]; then
+    # No xclip: a small GTK helper holds the image in the background.
+    setsid "$helper" "$file" </dev/null >/dev/null 2>&1 &
+    message=$copied
+else
+    printf 'No clipboard tool (xclip or dwm-clip-image); not copied\n' >&2
+    message='Screenshot saved in ~/Pictures/Screenshots (could not copy it)'
+fi
+xmessage -nearmouse -timeout 2 "$message" || :

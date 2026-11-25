@@ -1,0 +1,85 @@
+#!/bin/sh
+
+if [ "${XDG_SESSION_TYPE:-}" = wayland ]; then
+    printf '%s\n' 'dwm needs an X11 session. Log out and select dwm (X11), or run startx from a TTY.' >&2
+    exit 1
+fi
+if [ -z "${DISPLAY:-}" ]; then
+    printf '%s\n' 'No X display. Select dwm (X11) at login, or run startx from a TTY.' >&2
+    exit 1
+fi
+
+export PATH="$HOME/.local/bin:/usr/local/bin:$PATH"
+export XDG_SESSION_TYPE=x11 XDG_CURRENT_DESKTOP=dwm XDG_SESSION_DESKTOP=dwm
+export DESKTOP_SESSION=dwm GDK_BACKEND=x11 QT_QPA_PLATFORM=xcb SDL_VIDEODRIVER=x11
+export ELECTRON_OZONE_PLATFORM_HINT=x11 MOZ_ENABLE_WAYLAND=0
+export XCURSOR_THEME="${XCURSOR_THEME:-Bibata-Modern-Classic}" XCURSOR_SIZE="${XCURSOR_SIZE:-24}"
+unset WAYLAND_DISPLAY HYPRLAND_INSTANCE_SIGNATURE QT_WAYLAND_DISABLE_WINDOWDECORATION
+unset WLR_NO_HARDWARE_CURSORS GBM_BACKEND
+
+if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+    if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -S "$XDG_RUNTIME_DIR/bus" ]; then
+        export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+    else
+        exec dbus-run-session -- "$0" "$@"
+    fi
+fi
+
+state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/dwm"
+mkdir -p "$state_dir" || exit 1
+exec >>"$state_dir/session.log" 2>&1
+printf '\nStarting dwm: %s on %s\n' "$(date -Is)" "$DISPLAY"
+
+# Arch's hooks import DISPLAY and XAUTHORITY into the user session.
+for hook in /etc/X11/xinit/xinitrc.d/?*.sh; do
+    [ ! -x "$hook" ] || . "$hook"
+done
+if command -v dbus-update-activation-environment >/dev/null 2>&1; then
+    dbus-update-activation-environment --systemd DISPLAY XAUTHORITY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_SESSION_DESKTOP || :
+fi
+
+[ ! -f "$HOME/.Xresources" ] || xrdb -merge "$HOME/.Xresources"
+xset r rate 300 50
+xsetroot -cursor_name left_ptr -solid '#232a2e'
+
+# Use the existing wallpaper, with a solid background when none is available.
+for wallpaper in "${DWM_WALLPAPER:-}" "$HOME/Pictures/wallpaper.jpg" "$HOME/Pictures/pics/WallpaperOne2688x1536.png"; do
+    if [ -f "$wallpaper" ] && command -v feh >/dev/null 2>&1; then
+        feh --no-fehbg --bg-fill "$wallpaper"
+        break
+    fi
+done
+
+# Optional monitor commands and other personal startup settings.
+config_dir="${XDG_CONFIG_HOME:-$HOME/.config}/dwm"
+[ ! -f "$config_dir/autostart.sh" ] || . "$config_dir/autostart.sh"
+
+background_pids=
+wm_pid=
+cleanup() {
+    trap - EXIT HUP INT TERM
+    [ -z "$wm_pid" ] || kill "$wm_pid" 2>/dev/null || :
+    for child in $background_pids; do
+        kill "$child" 2>/dev/null || :
+    done
+}
+trap cleanup EXIT
+trap 'exit 0' HUP INT TERM
+
+if command -v picom >/dev/null 2>&1; then
+    picom --backend xrender &
+    background_pids="$background_pids $!"
+fi
+if [ -x /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 ]; then
+    /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 &
+    background_pids="$background_pids $!"
+fi
+dwm-status &
+background_pids="$background_pids $!"
+
+"${DWM_BIN:-/usr/local/bin/dwm}" &
+wm_pid=$!
+wait "$wm_pid"
+result=$?
+wm_pid=
+exit "$result"

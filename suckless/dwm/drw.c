@@ -178,7 +178,12 @@ drw_clr_create(Drw *drw, Clr *dest, const char *clrname, unsigned int alpha)
 
 	if (!XftColorAllocName(drw->dpy, drw->visual, drw->cmap, clrname, dest))
 		die("error, cannot allocate color '%s'", clrname);
-	dest->pixel = (dest->pixel & 0x00ffffffU) | (alpha << 24);
+	/* premultiply RGB by alpha, as the compositor expects for ARGB pixels,
+	 * so translucent non-black colours keep their real shade */
+	dest->pixel = (alpha << 24)
+		| ((((dest->pixel >> 16) & 0xff) * alpha / 0xff) << 16)
+		| ((((dest->pixel >> 8) & 0xff) * alpha / 0xff) << 8)
+		| ((dest->pixel & 0xff) * alpha / 0xff);
 }
 
 /* Wrapper to create color schemes. The caller has to call free(3) on the

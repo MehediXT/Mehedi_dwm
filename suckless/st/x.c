@@ -867,9 +867,11 @@ xsetcolorname(int x, const char *name)
 void
 xclear(int x1, int y1, int x2, int y2)
 {
-	XftDrawRect(xw.draw,
-			&dc.col[IS_SET(MODE_REVERSE)? defaultfg : defaultbg],
-			x1, y1, x2-x1, y2-y1);
+	/* paint the leftover edge area with the same alpha as the cells,
+	 * otherwise it shows up as an opaque strip on the right/bottom */
+	Color c = dc.col[IS_SET(MODE_REVERSE)? defaultfg : defaultbg];
+	c.color.alpha = dc.bg_alpha;
+	XftDrawRect(xw.draw, &c, x1, y1, x2-x1, y2-y1);
 }
 
 void
