@@ -27,6 +27,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -191,6 +192,7 @@ static void applyrules(Client *c);
 static int applysizehints(Client *c, int *x, int *y, int *w, int *h, int interact);
 static void arrange(Monitor *m);
 static void arrangemon(Monitor *m);
+static void updatesolo(Monitor *m);
 static void attach(Client *c);
 static void attachstack(Client *c);
 static void buttonpress(XEvent *e);
@@ -289,6 +291,7 @@ static void updatetitle(Client *c);
 static void updatewindowtype(Client *c);
 static void updatewmhints(Client *c);
 static void view(const Arg *arg);
+static void slideview(const Arg *arg);
 static Client *wintoclient(Window w);
 static Monitor *wintomon(Window w);
 static int xerror(Display *dpy, XErrorEvent *ee);
@@ -331,6 +334,7 @@ static void (*handler[LASTEvent]) (XEvent *) = { /* maps X event type to matchin
 	[UnmapNotify] = unmapnotify /* window needs to be unmapped */
 };
 static Atom wmatom[WMLast], netatom[NetLast];
+static Atom dwmsolo; /* _DWM_SOLO: window has the screen to itself */
 static int restart = 0;
 static int running = 1;
 static Cur *cursor[CurLast];
@@ -483,6 +487,33 @@ arrangemon(Monitor *m)
 	m->ltsymbol[sizeof m->ltsymbol - 1] = '\0';
 	if (m->lt[m->sellt]->arrange) /* if the layout has an associated arrange func, call it (ex. tile() )*/
 		m->lt[m->sellt]->arrange(m);
+	updatesolo(m);
+}
+
+/* Mark windows with _DWM_SOLO when they have the screen to themselves
+ * (only tiled window on the tag, or monocle layout). picom uses it to
+ * keep such windows solid and make them transparent when sharing. */
+void
+updatesolo(Monitor *m)
+{
+	Client *c;
+	int n = 0, solo;
+	long one = 1;
+
+	for (c = nexttiled(m->clients); c; c = nexttiled(c->next))
+		n++;
+	solo = n <= 1 || m->lt[m->sellt]->arrange == monocle;
+	for (c = m->clients; c; c = c->next) {
+		/* leave windows on hidden tags alone: their mark is still right
+		 * for their own tag, so switching back doesn't flash 90% -> solid */
+		if (!ISVISIBLE(c))
+			continue;
+		if (solo && !c->isfloating)
+			XChangeProperty(dpy, c->win, dwmsolo, XA_CARDINAL, 32,
+				PropModeReplace, (unsigned char *)&one, 1);
+		else
+			XDeleteProperty(dpy, c->win, dwmsolo);
+	}
 }
 
 void
@@ -1915,6 +1946,7 @@ setup(void)
 	netatom[NetSupported] = XInternAtom(dpy, "_NET_SUPPORTED", False);
 	netatom[NetWMName] = XInternAtom(dpy, "_NET_WM_NAME", False);
 	netatom[NetWMState] = XInternAtom(dpy, "_NET_WM_STATE", False);
+	dwmsolo = XInternAtom(dpy, "_DWM_SOLO", False);
 	netatom[NetWMCheck] = XInternAtom(dpy, "_NET_SUPPORTING_WM_CHECK", False);
 	netatom[NetWMFullscreen] = XInternAtom(dpy, "_NET_WM_STATE_FULLSCREEN", False);
 	netatom[NetWMSticky] = XInternAtom(dpy, "_NET_WM_STATE_STICKY", False);
@@ -2623,6 +2655,90 @@ view(const Arg *arg)
 		selmon->tagset[selmon->seltags] = arg->ui & TAGMASK;
 	focus(NULL);
 	arrange(selmon);
+}
+
+/* Like view(), but slides the old workspace out and the new one in, the way
+ * macOS Spaces do. Going to a higher tag slides left, a lower tag slides right. */
+void
+slideview(const Arg *arg)
+{
+	Monitor *m = selmon;
+	Client *c;
+	XEvent ev;
+	struct timespec start, due;
+	long long period, duens;
+	unsigned int oldtags = m->tagset[m->seltags];
+	unsigned int newtags = arg->ui & TAGMASK;
+	int dir, offset, moved = 0, frame, frames;
+	double t, e;
+
+	if (slideduration <= 0 || !newtags || newtags == oldtags) {
+		view(arg);
+		return;
+	}
+	dir = newtags > oldtags ? 1 : -1;
+
+	/* Switch tags and park the windows at their start positions while the
+	 * server is grabbed, so the compositor never shows a jump. */
+	XGrabServer(dpy);
+	view(arg);
+	for (c = m->clients; c; c = c->next) {
+		if (c->issticky)
+			continue;
+		if (ISVISIBLE(c) && !(c->tags & oldtags)) {
+			XMoveWindow(dpy, c->win, c->x + dir * m->mw, c->y);
+			moved = 1;
+		} else if (!ISVISIBLE(c) && (c->tags & oldtags)) {
+			XMoveWindow(dpy, c->win, c->x, c->y);
+			moved = 1;
+		}
+	}
+	XUngrabServer(dpy);
+	XSync(dpy, False);
+	if (!moved)
+		return;
+
+	/* One evenly spaced step per monitor refresh, paced against absolute
+	 * deadlines so the frames never drift or bunch up. */
+	frames = (slideduration * slidefps + 500) / 1000;
+	if (frames < 1)
+		frames = 1;
+	period = 1000000000LL / slidefps;
+	clock_gettime(CLOCK_MONOTONIC, &start);
+	for (frame = 1; frame <= frames; frame++) {
+		duens = start.tv_nsec + period * frame;
+		due.tv_sec = start.tv_sec + duens / 1000000000LL;
+		due.tv_nsec = duens % 1000000000LL;
+		clock_nanosleep(CLOCK_MONOTONIC, TIMER_ABSTIME, &due, NULL);
+		t = (double)frame / frames;
+		e = 1.0 - (1.0 - t) * (1.0 - t) * (1.0 - t); /* ease-out cubic */
+		offset = (int)(e * m->mw + 0.5);
+		for (c = m->clients; c; c = c->next) {
+			if (c->issticky)
+				continue;
+			if (ISVISIBLE(c) && !(c->tags & oldtags))
+				XMoveWindow(dpy, c->win, c->x + dir * (m->mw - offset), c->y);
+			else if (!ISVISIBLE(c) && (c->tags & oldtags))
+				XMoveWindow(dpy, c->win, c->x - dir * offset, c->y);
+		}
+		/* Send the step and keep going: waiting for the server (XSync)
+		 * stalls behind busy on-screen apps like a playing video and
+		 * turns the slide into slow motion. */
+		XFlush(dpy);
+	}
+
+	/* Settle: new windows exactly in place, old ones hidden as dwm expects. */
+	for (c = m->clients; c; c = c->next) {
+		if (c->issticky)
+			continue;
+		if (ISVISIBLE(c) && !(c->tags & oldtags))
+			XMoveWindow(dpy, c->win, c->x, c->y);
+		else if (!ISVISIBLE(c) && (c->tags & oldtags))
+			XMoveWindow(dpy, c->win, WIDTH(c) * -2, c->y);
+	}
+	XSync(dpy, False);
+	/* Windows sliding under the pointer must not steal focus. */
+	while (XCheckMaskEvent(dpy, EnterWindowMask, &ev));
 }
 
 pid_t

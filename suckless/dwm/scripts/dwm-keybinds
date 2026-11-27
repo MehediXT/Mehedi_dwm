@@ -24,7 +24,7 @@ WINDOWS     Super+Shift+Space       Toggle floating
 WINDOWS     Super+Ctrl+Shift+s      Toggle sticky (window follows you)
 WINDOWS     Super+Drag Left/Right   Move / resize with the mouse
 LAYOUT      Super+t                 Tile
-LAYOUT      Super+Shift+m           Monocle
+LAYOUT      Super+Shift+m           Monocle on / off (back to previous layout)
 LAYOUT      Super+s                 Spiral
 LAYOUT      Super+Shift+t           Dwindle
 LAYOUT      Super+Shift+f           Floating
@@ -42,6 +42,9 @@ MONITORS    Super+Shift+, / .       Send window to previous / next monitor
 GAPS        Super+- / Super+=       Shrink / grow gaps
 GAPS        Super+Shift+=           Toggle gaps
 GAPS        Super+Shift+-           Reset gaps
+OPACITY     Super+Alt+- / =         Window more transparent / more solid
+OPACITY     Super+Alt+0             Reset window transparency
+OPACITY     Alt+a / Alt+s / Alt+d   Inside st: background alpha (text stays sharp)
 BAR         Super+Shift+b           Toggle bar
 BAR         Click status            Control Center
 BAR         Right-click status      Pavucontrol
@@ -53,6 +56,7 @@ MEDIA       Super+\                 Mute
 MEDIA       Super+F10/F11/F12       Previous / play-pause / next
 SHOTS       Print / Super+F1        Full screenshot
 SHOTS       F6 / Super+Shift+s      Region screenshot (copied, Ctrl+V to paste)
+SESSION     Super+`                 Switch keyboard English / Arabic
 SESSION     Super+Shift+l           Lock screen
 SESSION     Super+Shift+p           Power menu
 SESSION     Super+Ctrl+Shift+q      Restart dwm (keeps windows)

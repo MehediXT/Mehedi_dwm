@@ -1,0 +1,67 @@
+#!/bin/sh
+# Change the focused window's transparency (picom reads _NET_WM_WINDOW_OPACITY).
+# usage: dwm-opacity down|up|reset   down = more transparent, up = more solid, reset = default
+# st has its own background-only alpha on the same keys, so for st the key
+# is passed through instead of fading the whole window (text stays sharp).
+
+step=10   # percent per press
+min=20    # never go below this (window would be unusable)
+shared=90 # picom's opacity for Brave/VS Code when sharing the screen
+          # (keep in sync with the _DWM_SOLO rule in ~/.config/picom/picom.conf)
+
+win=$(xprop -root _NET_ACTIVE_WINDOW 2>/dev/null | awk '/window id/ {print $5}')
+case "$win" in ''|0x0) exit 0 ;; esac
+class=$(xprop -id "$win" WM_CLASS 2>/dev/null)
+
+case "$class" in
+*'"St"'*|*'"st-256color"'*)
+	case "$1" in
+	down) key=alt+a ;;
+	up) key=alt+s ;;
+	reset) key=alt+d ;;
+	*) exit 1 ;;
+	esac
+	if ! command -v xdotool >/dev/null 2>&1; then
+		echo "dwm-opacity: xdotool is needed for st" >&2
+		exit 1
+	fi
+	exec xdotool key --clearmodifiers --window "$win" "$key"
+	;;
+esac
+
+if [ "$1" = reset ]; then
+	# back to default: picom's rules decide again
+	exec xprop -id "$win" -remove _NET_WM_WINDOW_OPACITY
+fi
+
+# current opacity in percent
+cur=$(xprop -id "$win" _NET_WM_WINDOW_OPACITY 2>/dev/null | awk '/=/ {print $3}')
+if [ -n "$cur" ]; then
+	pct=$(( (cur * 100 + 2147483647) / 4294967295 ))
+else
+	# no property: start from what picom is actually showing
+	pct=100
+	case "$class" in
+	*'"Brave-browser"'*|*'"com.microsoft.VSCode"'*|*'"Code"'*)
+		props=$(xprop -id "$win" _DWM_SOLO _NET_WM_STATE 2>/dev/null)
+		case "$props" in
+		*'_DWM_SOLO(CARDINAL) = 1'*|*_NET_WM_STATE_FULLSCREEN*) ;;
+		*) pct=$shared ;;
+		esac
+		;;
+	esac
+fi
+
+case "$1" in
+down) pct=$((pct - step)) ;;
+up) pct=$((pct + step)) ;;
+*) echo "usage: dwm-opacity down|up|reset" >&2; exit 1 ;;
+esac
+
+[ "$pct" -lt "$min" ] && pct=$min
+[ "$pct" -gt 100 ] && pct=100
+
+# Always set the property (even at 100%): removing it would hand the window
+# back to picom's rules, which may fade it again. Use reset for that.
+xprop -id "$win" -f _NET_WM_WINDOW_OPACITY 32c \
+	-set _NET_WM_WINDOW_OPACITY $(( pct * 4294967295 / 100 ))

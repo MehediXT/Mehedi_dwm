@@ -9,7 +9,7 @@ fi
 
 source_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 stage="$source_dir/.local"
-scripts="dwm-control-center dwm-volume dwm-keybinds dwm-status dwm-screenshot dwm-browser dwm-session dwm-wallpaper dwm-clip-image"
+scripts="dwm-control-center dwm-volume dwm-keybinds dwm-status dwm-screenshot dwm-browser dwm-session dwm-wallpaper dwm-clip-image dwm-opacity"
 
 for file in \
     bin/dwm bin/dmenu bin/dmenu_path bin/dmenu_run bin/stest bin/st \
@@ -35,7 +35,7 @@ for target in \
     /usr/local/bin/dwm-keybinds /usr/local/bin/dwm-status \
     /usr/local/bin/dwm-screenshot /usr/local/bin/dwm-browser \
     /usr/local/bin/dwm-session /usr/local/bin/dwm-wallpaper \
-    /usr/local/bin/dwm-clip-image; do
+    /usr/local/bin/dwm-clip-image /usr/local/bin/dwm-opacity; do
     if [ -e "$target" ]; then
         mkdir -p "$backup_dir$(dirname -- "$target")"
         cp -a -- "$target" "$backup_dir$target"

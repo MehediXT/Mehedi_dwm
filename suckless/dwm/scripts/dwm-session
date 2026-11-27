@@ -67,7 +67,7 @@ trap cleanup EXIT
 trap 'exit 0' HUP INT TERM
 
 if command -v picom >/dev/null 2>&1; then
-    picom --backend xrender &
+    picom --backend glx &
     background_pids="$background_pids $!"
 fi
 if [ -x /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 ]; then

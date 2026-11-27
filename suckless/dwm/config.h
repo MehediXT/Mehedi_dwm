@@ -36,7 +36,7 @@ static const int showlayout         = 1;        /* 0 means no layout indicator *
 static const int showstatus         = 1;        /* 0 means no status bar */
 static const int showfloating       = 0;        /* 0 means no floating indicator */
 static int topbar                   = 1;        /* 0 means bottom bar */
-static const unsigned int baralpha  = 0xcc;     /* ~80% opaque; lower values are more transparent */
+static const unsigned int baralpha  = 0x99;     /* ~60% opaque; lower = more transparent (0x00-0xff) */
 static const unsigned int borderalpha = OPAQUE; /* keep client borders solid */
 static const unsigned int alphas[]  = { OPAQUE, baralpha, borderalpha };
 static char dmenufont[]             = "Hack:size=10"; /* match the bar font */
@@ -50,10 +50,10 @@ static char titlefgcolor[]          = "#1a1611";
 /* default colors used if xrdb is not loaded */
 /* Black backgrounds keep translucent ARGB pixels premultiplied. */
 static char normbgcolor[]           = "#000000";
-static char normbordercolor[]       = "#3b3328";
+static char normbordercolor[]       = "#6b5a45"; /* unfocused: visible muted brown */
 static char normfgcolor[]           = "#d8dee9";
 static char selfgcolor[]            = "#eceff4";
-static char selbordercolor[]        = "#c08a48";
+static char selbordercolor[]        = "#f0a040"; /* focused: bright orange */
 static char selbgcolor[]            = "#b48ead";
 
 static char *colors[][3] = {
@@ -116,6 +116,16 @@ static const Layout layouts[] = { /* alt glyphs: 󱡗 󱏋 */
 	{ "󰫥",      dwindle },
 };
 
+/* Mod+Shift+m: monocle on, press again to go back to the previous layout */
+static void
+togglemonocle(const Arg *arg)
+{
+	if (selmon->lt[selmon->sellt]->arrange == monocle)
+		setlayout(&(Arg){0});           /* swap back to the previous layout */
+	else
+		setlayout(&(Arg){.v = &layouts[2]});
+}
+
 /* static const char *gromittoggle[] = { */
 /* 	"gromit-mpx", "--toggle", NULL */
 /* }; */
@@ -126,8 +136,10 @@ static const Layout layouts[] = { /* alt glyphs: 󱡗 󱏋 */
 /* key definitions */
 #include <X11/XF86keysym.h> /* multimedia keys (volume, play/pause, ...) */
 #define MODKEY Mod4Mask // windows key
+static const int slideduration = 250; /* Super+1..9 slide animation in ms, 0 = off */
+static const int slidefps = 100;      /* match the monitor refresh rate (HDMI-0 runs at 100 Hz) */
 #define TAGKEYS(KEY,TAG) \
-	{ MODKEY,                       KEY,      view,           {.ui = 1 << TAG} }, \
+	{ MODKEY,                       KEY,      slideview,           {.ui = 1 << TAG} }, \
 	{ MODKEY|ControlMask,           KEY,      toggleview,     {.ui = 1 << TAG} }, \
 	{ MODKEY|ShiftMask,             KEY,      tag,            {.ui = 1 << TAG} }, \
 	{ MODKEY|ControlMask|ShiftMask, KEY,      toggletag,      {.ui = 1 << TAG} },
@@ -178,6 +190,12 @@ static const Key keys[] = {
 	/* { MODKEY,                       XK_F8,     spawn,		   {.v = gromittoggle} }, */
 	/* { MODKEY|ShiftMask,             XK_F8,     spawn,		   {.v = gromitclear} }, */
 	{ MODKEY,                       XK_d,      spawn,          {.v = dmenucmd } },
+	/* transparency of the focused window (like Mod+-/= for gaps):
+	 * Mod+Alt+-  more transparent, Mod+Alt+=  more solid, Mod+Alt+0  reset
+	 * st keeps its own background-only alpha (also Alt+a/s/d inside st) */
+	{ MODKEY|Mod1Mask,              XK_minus,  spawn,          SHCMD("dwm-opacity down") },
+	{ MODKEY|Mod1Mask,              XK_equal,  spawn,          SHCMD("dwm-opacity up") },
+	{ MODKEY|Mod1Mask,              XK_0,      spawn,          SHCMD("dwm-opacity reset") },
 	{ MODKEY|ShiftMask,             XK_c,      spawn,          {.v = ctrlcentercmd } },
 	{ MODKEY,                       XK_slash,  spawn,          {.v = keyhelpcmd } }, /* shortcut cheat sheet */
 	{ MODKEY,                       XK_F2,     spawn,          {.v = keyhelpcmd } },
@@ -206,13 +224,14 @@ static const Key keys[] = {
 
 	{ MODKEY,                       XK_t,      setlayout,      {.v = &layouts[0]} },
 	{ MODKEY,						XK_f,	   togglefullscreen, {0} }, /* toggle focused window fullscreen */
-	{ MODKEY|ShiftMask,				XK_m,      setlayout,      {.v = &layouts[2]} }, /* monacle */
+	{ MODKEY|ShiftMask,				XK_m,      togglemonocle,  {0} }, /* monocle on/off */
 	{ MODKEY|ShiftMask,				XK_f,      setlayout,      {.v = &layouts[1]} }, /* floating */
 	{ MODKEY,						XK_s,      setlayout,      {.v = &layouts[3]} }, /* spiral */
 	{ MODKEY|ShiftMask,				XK_t,      setlayout,      {.v = &layouts[4]} }, /* dwindle */
 	{ MODKEY|ControlMask,			XK_space,  setlayout,      {0} },
 	{ MODKEY|ShiftMask,				XK_space,  togglefloating, {0} },
 	{ MODKEY,						XK_space,  zoom,           {0} },
+	{ MODKEY,						XK_grave,  spawn,          {.v = (const char*[]){ "kblayout", "toggle", NULL } } }, /* English <-> Arabic */
 	{ MODKEY|ControlMask,           XK_Return, focusmaster,    {0} },
 	{ MODKEY|ControlMask|ShiftMask, XK_s,      togglesticky,   {0} },
 

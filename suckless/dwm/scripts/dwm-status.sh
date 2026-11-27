@@ -220,6 +220,13 @@ weather_text() {
     printf '\uf0c2 --°C'
 }
 
+keyboard_layout() {
+    case $(kblayout 2>/dev/null) in
+        ara) printf '%s' 'AR' ;;
+        us) printf '%s' 'EN' ;;
+    esac
+}
+
 status() {
     local total idle usage part text= separator=
     local -a parts
@@ -238,6 +245,7 @@ status() {
         "$(battery)"
         "$(volume)"
         "$(weather_text)"
+        "$(keyboard_layout)"
         "$(LC_TIME=C date '+%A, %b %-d  %-I:%M%P')"
     )
     for part in "${parts[@]}"; do
